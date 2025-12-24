@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,61 @@ int main(void) {
 			token = strtok(NULL, " \t");
 		}
 		argv[argc] = NULL;
+
+		if (argc > 1 && strcmp(argv[argc - 2], ">") == 0) {
+			// argv[0..argc-3] = command+args, argv[argc-1] =
+			// filename
+			char *cmd_argv[MAX_TOKENS];
+			for (int i = 0; i < argc - 2; i++) {
+				cmd_argv[i] = argv[i];
+			}
+			cmd_argv[argc - 2] = NULL;
+
+			pid_t pid = fork();
+			if (pid == 0) {
+				// Child: open file, redirect stdout
+				int fd =
+				    open(argv[argc - 1],
+					 O_CREAT | O_TRUNC | O_WRONLY, 0644);
+				if (fd < 0) {
+					perror("open");
+					_exit(1);
+				}
+				dup2(fd, 1); // stdout -> file
+				close(fd);
+				execvp(cmd_argv[0], cmd_argv);
+				perror("execvp");
+				_exit(127);
+			} else {
+				int status;
+				waitpid(pid, &status, 0);
+			}
+			continue;
+		} else if (argc > 2 && strcmp(argv[argc - 2], "<") == 0) {
+			char *cmd_argv[MAX_TOKENS];
+			for (int i = 0; i < argc - 2; i++) {
+				cmd_argv[i] = argv[i];
+			}
+			cmd_argv[argc - 2] = NULL;
+
+			pid_t pid = fork();
+			if (pid == 0) {
+				int fd = open(argv[argc - 1], O_RDONLY);
+				if (fd < 0) {
+					perror("open");
+					_exit(1);
+				}
+				dup2(fd, 0); // stdin <- file
+				close(fd);
+				execvp(cmd_argv[0], cmd_argv);
+				perror("execvp");
+				_exit(127);
+			} else {
+				int status;
+				waitpid(pid, &status, 0);
+			}
+			continue;
+		}
 
 		if (argc == 0) {
 			continue;
