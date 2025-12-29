@@ -12,6 +12,7 @@ int main(void) {
 	char *line = NULL;
 	size_t len = 0;
 	ssize_t nread;
+	char *left_argv[MAX_TOKENS], *right_argv[MAX_TOKENS];
 
 	while (1) {
 		printf("toysh> ");
@@ -41,6 +42,87 @@ int main(void) {
 			printf("Exiting toysh.\n");
 			free(line);
 			exit(0);
+		}
+
+		int pipe_index = -1;
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "|") == 0) {
+				pipe_index = i;
+				break;
+			}
+		}
+
+		if (pipe_index != -1) {
+			// build left_argv and right_argv
+			int left_count = 0;
+			for (int i = 0; i < pipe_index; i++) {
+				left_argv[left_count++] = argv[i];
+			}
+			left_argv[left_count] = NULL;
+
+			int right_count = 0;
+			for (int i = pipe_index + 1; i < argc; i++) {
+				right_argv[right_count++] = argv[i];
+			}
+			right_argv[right_count] = NULL;
+
+			int pipefd[2];
+			if (pipe(pipefd) == -1) {
+				perror("pipe");
+				continue;
+			}
+
+			pid_t pid1 = fork();
+			if (pid1 == -1) {
+				perror("fork");
+				close(pipefd[0]);
+				close(pipefd[1]);
+				continue;
+			}
+			if (pid1 == 0) {
+				if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+					perror("dup2");
+					_exit(1);
+				}
+				close(pipefd[0]);
+				close(pipefd[1]);
+
+				execvp(left_argv[0], left_argv);
+				perror("execvp left-pipe");
+				_exit(127);
+			}
+
+			pid_t pid2 = fork();
+			if (pid2 == -1) {
+				perror("fork");
+				// careful: we already have pid1 running
+				waitpid(pid1, NULL, 0);
+				close(pipefd[0]);
+				close(pipefd[1]);
+				continue;
+			}
+			if (pid2 == 0) {
+
+				if (dup2(pipefd[0], STDIN_FILENO) == -1) {
+					perror("dup2");
+					_exit(1);
+				}
+				close(pipefd[0]);
+				close(pipefd[1]);
+
+				execvp(right_argv[0], right_argv);
+				perror("execvp right-pipe");
+				_exit(127);
+			}
+
+			close(pipefd[0]);
+			close(pipefd[1]);
+
+			int status;
+			waitpid(pid1, &status, 0);
+			waitpid(pid2, &status, 0);
+
+			continue;
 		}
 
 		if (argc > 1 && strcmp(argv[argc - 2], ">") == 0) {
