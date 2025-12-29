@@ -37,6 +37,12 @@ int main(void) {
 		}
 		argv[argc] = NULL;
 
+		if (strcmp(argv[0], "exit") == 0) {
+			printf("Exiting toysh.\n");
+			free(line);
+			exit(0);
+		}
+
 		if (argc > 1 && strcmp(argv[argc - 2], ">") == 0) {
 			// argv[0..argc-3] = command+args, argv[argc-1] =
 			// filename
